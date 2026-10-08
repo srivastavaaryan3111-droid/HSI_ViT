@@ -3,3 +3,17 @@ __pycache__/
 .venv/
 .env
 .vscode/
+# Generated dataset files
+data/*.npy
+
+# Python cache
+__pycache__/
+# Generated dataset files
+data/*.npy
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/

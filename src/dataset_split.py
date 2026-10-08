@@ -1,3 +1,4 @@
+from pathlib import Path
 import scipy.io as sio
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -5,12 +6,15 @@ from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 
 
-# -----------------------------
-# 1. Load data
-# -----------------------------
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-image_data = sio.loadmat("data/Indian_pines_corrected.mat")
-ground_truth = sio.loadmat("data/Indian_pines_gt.mat")
+image_data = sio.loadmat(
+    BASE_DIR / "data" / "Indian_pines_corrected.mat"
+)
+
+ground_truth = sio.loadmat(
+    BASE_DIR / "data" / "Indian_pines_gt.mat"
+)
 
 hsi = image_data["indian_pines_corrected"]
 gt = ground_truth["indian_pines_gt"]
@@ -106,3 +110,13 @@ print("X_test:", X_test.shape)
 print("y_test:", y_test.shape)
 
 print("\nNumber of classes:", len(np.unique(labels)))
+# -----------------------------
+# 6. Save split data
+# -----------------------------
+
+np.save(BASE_DIR / "data" / "X_train.npy", X_train)
+np.save(BASE_DIR / "data" / "X_test.npy", X_test)
+np.save(BASE_DIR / "data" / "y_train.npy", y_train)
+np.save(BASE_DIR / "data" / "y_test.npy", y_test)
+
+print("\nTrain/test data saved successfully.")
