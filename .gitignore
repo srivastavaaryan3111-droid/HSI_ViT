@@ -10,6 +10,4 @@ data/X_*.npy
 data/y_*.npy
 reports/
 
-# Fitted preprocessing and newly trained model artifacts
-models/*.joblib
-models/hsi_vit_v2.pth
+# Keep the trained inference artifacts available when the project is cloned.
