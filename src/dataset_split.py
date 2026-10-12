@@ -1,122 +1,42 @@
-from pathlib import Path
-import scipy.io as sio
+"""Create stratified 70/10/20 pixel splits and fit train-only preprocessing."""
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-image_data = sio.loadmat(
-    BASE_DIR / "data" / "Indian_pines_corrected.mat"
-)
-
-ground_truth = sio.loadmat(
-    BASE_DIR / "data" / "Indian_pines_gt.mat"
-)
-
-hsi = image_data["indian_pines_corrected"]
-gt = ground_truth["indian_pines_gt"]
-
-hsi = hsi.astype(np.float32)
-
-H, W, B = hsi.shape
+from preprocessing import (N_COMPONENTS, PATCH_SIZE, RANDOM_SEED, ROOT,
+                           extract_patches, fit_preprocessor, load_indian_pines,
+                           save_preprocessor, transform_image)
 
 
-# -----------------------------
-# 2. Normalize
-# -----------------------------
+def build_dataset(spatial: bool = False):
+    image, gt = load_indian_pines()
+    coordinates = np.argwhere(gt > 0)
+    labels = gt[gt > 0] - 1
+    counts = np.bincount(labels, minlength=16)
+    if np.any(counts < 3):
+        rare = [str(i + 1) for i, count in enumerate(counts) if count < 3]
+        raise ValueError("Stratified 70/10/20 split requires at least 3 pixels per class; rare classes: " + ", ".join(rare))
+    train_coords, held_coords, y_train, y_held = train_test_split(
+        coordinates, labels, test_size=0.30, random_state=RANDOM_SEED, stratify=labels)
+    val_coords, test_coords, y_val, y_test = train_test_split(
+        held_coords, y_held, test_size=2/3, random_state=RANDOM_SEED, stratify=y_held)
+    # spatial flag is explicit in the CLI/docs; the baseline remains random pixel stratification.
+    if spatial:
+        raise NotImplementedError("Spatially separated split is not implemented; use default stratified pixel split.")
 
-hsi_2d = hsi.reshape(-1, B)
-
-scaler = StandardScaler()
-hsi_normalized = scaler.fit_transform(hsi_2d)
-
-
-# -----------------------------
-# 3. PCA
-# -----------------------------
-
-n_components = 30
-
-pca = PCA(n_components=n_components)
-hsi_pca = pca.fit_transform(hsi_normalized)
-
-hsi_pca = hsi_pca.reshape(H, W, n_components)
-
-
-# -----------------------------
-# 4. Patch extraction
-# -----------------------------
-
-patch_size = 11
-margin = patch_size // 2
-
-padded_hsi = np.pad(
-    hsi_pca,
-    ((margin, margin), (margin, margin), (0, 0)),
-    mode="reflect"
-)
-
-patches = []
-labels = []
-
-for row in range(H):
-    for col in range(W):
-
-        if gt[row, col] == 0:
-            continue
-
-        patch = padded_hsi[
-            row:row + patch_size,
-            col:col + patch_size,
-            :
-        ]
-
-        patches.append(patch)
-        labels.append(gt[row, col])
+    artifact = fit_preprocessor(image, train_coords, N_COMPONENTS)
+    cube = transform_image(image, artifact)
+    splits = {"train": (train_coords, y_train), "val": (val_coords, y_val), "test": (test_coords, y_test)}
+    for name, (coords, split_labels) in splits.items():
+        np.save(ROOT / "data" / f"X_{name}.npy", extract_patches(cube, coords, PATCH_SIZE))
+        np.save(ROOT / "data" / f"y_{name}.npy", split_labels.astype(np.int64))
+    save_preprocessor(artifact)
+    print("Saved stratified pixel splits:", ", ".join(f"{k}={len(v[1])}" for k, v in splits.items()))
+    print(f"Training-only PCA variance retained: {artifact['pca'].explained_variance_ratio_.sum():.2%}")
+    print("Note: adjacent/overlapping spatial patches can occur across random pixel splits.")
 
 
-patches = np.array(patches)
-labels = np.array(labels)
-
-
-print("Total patches:", len(patches))
-print("Patch shape:", patches.shape)
-print("Labels shape:", labels.shape)
-
-
-# -----------------------------
-# 5. Convert labels to 0-based
-# -----------------------------
-
-labels = labels - 1
-
-X_train, X_test, y_train, y_test = train_test_split(
-    patches,
-    labels,
-    test_size=0.2,
-    random_state=42,
-    stratify=labels
-)
-
-print("\nTraining data:")
-print("X_train:", X_train.shape)
-print("y_train:", y_train.shape)
-
-print("\nTesting data:")
-print("X_test:", X_test.shape)
-print("y_test:", y_test.shape)
-
-print("\nNumber of classes:", len(np.unique(labels)))
-# -----------------------------
-# 6. Save split data
-# -----------------------------
-
-np.save(BASE_DIR / "data" / "X_train.npy", X_train)
-np.save(BASE_DIR / "data" / "X_test.npy", X_test)
-np.save(BASE_DIR / "data" / "y_train.npy", y_train)
-np.save(BASE_DIR / "data" / "y_test.npy", y_test)
-
-print("\nTrain/test data saved successfully.")
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--spatial", action="store_true", help="Reserved; spatial holdout mode is not implemented")
+    build_dataset(spatial=parser.parse_args().spatial)

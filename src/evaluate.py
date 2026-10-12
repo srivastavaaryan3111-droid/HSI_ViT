@@ -1,85 +1,54 @@
+"""Evaluate the validation-selected model on the held-out test set."""
 from pathlib import Path
+
 import torch
-import torch.nn as nn
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, precision_recall_fscore_support
 
 from pytorch_dataset import test_loader
 from vit_model import HSI_ViT
 
 
-# -----------------------------
-# 1. Device
-# -----------------------------
-
-device = torch.device("cpu")
-
-print("Using device:", device)
-
-
-# -----------------------------
-# 2. Create model
-# -----------------------------
-
-model = HSI_ViT(
-    input_channels=30,
-    patch_size=11,
-    num_classes=16,
-    embed_dim=64,
-    num_heads=4,
-    num_layers=2
-)
-
-model = model.to(device)
-
-
-# -----------------------------
-# 3. Load trained model
-# -----------------------------
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-model_path = BASE_DIR / "models" / "hsi_vit.pth"
-
-model.load_state_dict(
-    torch.load(model_path, map_location=device)
-)
-
-print("Model loaded successfully.")
+NUM_CLASSES = 16
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# -----------------------------
-# 4. Evaluation
-# -----------------------------
+def main():
+    model_path = BASE_DIR / "models" / "hsi_vit_v2.pth"
+    if not model_path.exists():
+        raise FileNotFoundError("Model checkpoint not found. Run `python src/train.py` first.")
+    model = HSI_ViT().to(device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=True)
+    if checkpoint.get("format_version") != 2:
+        raise ValueError("Unsupported checkpoint. Rebuild splits and train the corrected v2 pipeline.")
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.eval()
 
-model.eval()
+    actual, predicted = [], []
+    with torch.no_grad():
+        for images, labels in test_loader:
+            logits = model(images.to(device))
+            predicted.extend(logits.argmax(1).cpu().tolist())
+            actual.extend(labels.tolist())
 
-correct = 0
-total = 0
+    labels = list(range(NUM_CLASSES))
+    precision, recall, f1, support = precision_recall_fscore_support(
+        actual, predicted, labels=labels, zero_division=0
+    )
+    print("Test results (model selected by validation loss):")
+    print(f"Accuracy: {accuracy_score(actual, predicted):.4f}")
+    for average in ("macro", "weighted"):
+        p, r, f, _ = precision_recall_fscore_support(actual, predicted, average=average, zero_division=0)
+        print(f"{average.title()} precision: {p:.4f} | recall: {r:.4f} | F1: {f:.4f}")
 
-with torch.no_grad():
-
-    for images, labels in test_loader:
-
-        images = images.to(device)
-        labels = labels.to(device)
-
-        outputs = model(images)
-
-        _, predicted = torch.max(outputs, 1)
-
-        total += labels.size(0)
-
-        correct += (
-            predicted == labels
-        ).sum().item()
+    print("\nPer-class results (class IDs are zero-based in the arrays):")
+    print(classification_report(actual, predicted, labels=labels, zero_division=0, digits=4))
+    print("Confusion matrix (rows=true, columns=predicted; class IDs 0-15):")
+    print(confusion_matrix(actual, predicted, labels=labels))
+    print("\nClass imbalance in test split:")
+    for class_id, count, p, r, f in zip(labels, support, precision, recall, f1):
+        print(f"Class {class_id + 1:2d}: support={count:4d} precision={p:.4f} recall={r:.4f} F1={f:.4f}")
 
 
-# -----------------------------
-# 5. Accuracy
-# -----------------------------
-
-accuracy = 100 * correct / total
-
-print("\nTest Results:")
-print("Correct predictions:", correct)
-print("Total samples:", total)
-print(f"Test Accuracy: {accuracy:.2f}%")
+if __name__ == "__main__":
+    main()

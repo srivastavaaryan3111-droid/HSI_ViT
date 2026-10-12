@@ -1,100 +1,26 @@
+"""Load prepared train/validation/test arrays as PyTorch data loaders."""
 from pathlib import Path
+
 import numpy as np
 import torch
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 
-
-# -----------------------------
-# 1. Project directory
-# -----------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+BATCH_SIZE = 64
 
 
-# -----------------------------
-# 2. Load train/test data
-# -----------------------------
-
-X_train = np.load(BASE_DIR / "data" / "X_train.npy")
-X_test = np.load(BASE_DIR / "data" / "X_test.npy")
-
-y_train = np.load(BASE_DIR / "data" / "y_train.npy")
-y_test = np.load(BASE_DIR / "data" / "y_test.npy")
-
-
-print("Loaded data:")
-print("X_train:", X_train.shape)
-print("y_train:", y_train.shape)
-print("X_test:", X_test.shape)
-print("y_test:", y_test.shape)
+def _loader(split, shuffle=False):
+    x_path, y_path = BASE_DIR / "data" / f"X_{split}.npy", BASE_DIR / "data" / f"y_{split}.npy"
+    if not x_path.exists() or not y_path.exists():
+        raise FileNotFoundError("Prepared splits are missing. Run `python src/dataset_split.py` first.")
+    x, y = np.load(x_path), np.load(y_path)
+    if x.ndim != 4 or x.shape[1:] != (11, 11, 30) or y.ndim != 1 or len(x) != len(y) or len(y) == 0:
+        raise ValueError(f"Malformed {split} split: X={x.shape}, y={y.shape}.")
+    dataset = TensorDataset(torch.from_numpy(x).float(), torch.from_numpy(y).long())
+    return DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=shuffle)
 
 
-# -----------------------------
-# 3. Convert NumPy → PyTorch
-# -----------------------------
-
-X_train_tensor = torch.tensor(
-    X_train,
-    dtype=torch.float32
-)
-
-X_test_tensor = torch.tensor(
-    X_test,
-    dtype=torch.float32
-)
-
-y_train_tensor = torch.tensor(
-    y_train,
-    dtype=torch.long
-)
-
-y_test_tensor = torch.tensor(
-    y_test,
-    dtype=torch.long
-)
-
-
-# -----------------------------
-# 4. Create PyTorch datasets
-# -----------------------------
-
-train_dataset = TensorDataset(
-    X_train_tensor,
-    y_train_tensor
-)
-
-test_dataset = TensorDataset(
-    X_test_tensor,
-    y_test_tensor
-)
-
-
-# -----------------------------
-# 5. Create DataLoaders
-# -----------------------------
-
-batch_size = 64
-
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=batch_size,
-    shuffle=True
-)
-
-test_loader = DataLoader(
-    test_dataset,
-    batch_size=batch_size,
-    shuffle=False
-)
-
-
-# -----------------------------
-# 6. Test one batch
-# -----------------------------
-
-images, labels = next(iter(train_loader))
-
-print("\nDataLoader test:")
-print("Batch images:", images.shape)
-print("Batch labels:", labels.shape)
-print("First 10 labels:", labels[:10])
+train_loader = _loader("train", shuffle=True)
+val_loader = _loader("val")
+test_loader = _loader("test")

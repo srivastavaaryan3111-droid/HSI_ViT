@@ -1,25 +1,15 @@
-import scipy.io as sio
-
-# Load .mat files
-image_data = sio.loadmat("data/Indian_pines_corrected.mat")
-ground_truth = sio.loadmat("data/Indian_pines_gt.mat")
-
-# Extract actual arrays
-hsi = image_data["indian_pines_corrected"]
-gt = ground_truth["indian_pines_gt"]
-
-# Print information
-print("HSI shape:", hsi.shape)
-print("Ground truth shape:", gt.shape)
-
-print("HSI data type:", hsi.dtype)
-print("Ground truth data type:", gt.dtype)
+"""Dataset inspection entry point using shared validation."""
+from preprocessing import load_indian_pines
 import numpy as np
 
-# Find all unique class labels
-classes, counts = np.unique(gt, return_counts=True)
 
-print("\nClasses and number of pixels:")
+def main():
+    image, labels = load_indian_pines()
+    classes, counts = np.unique(labels, return_counts=True)
+    print("HSI shape:", image.shape, "dtype:", image.dtype)
+    print("Ground truth shape:", labels.shape)
+    print("Class counts:", dict(zip(classes.tolist(), counts.tolist())))
 
-for cls, count in zip(classes, counts):
-    print(f"Class {cls}: {count} pixels")
+
+if __name__ == "__main__":
+    main()
