@@ -1,19 +1,15 @@
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
 .env
 .vscode/
-# Generated dataset files
-data/*.npy
+.DS_Store
 
-# Python cache
-__pycache__/
-# Generated dataset files
-data/*.npy
+# Generated split arrays and reports
+data/X_*.npy
+data/y_*.npy
+reports/
 
-# Python cache
-__pycache__/
-*.pyc
-
-# VS Code
-.vscode/
+# Fitted preprocessing and newly trained model artifacts
+models/*.joblib
+models/hsi_vit_v2.pth
